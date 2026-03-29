@@ -117,6 +117,7 @@ import org.jetbrains.kotlin.idea.hierarchy.AbstractHierarchyWithLibTest
 import org.jetbrains.kotlin.idea.highlighter.AbstractCustomHighlightUsageHandlerTest
 import org.jetbrains.kotlin.idea.highlighter.AbstractDiagnosticMessageTest
 import org.jetbrains.kotlin.idea.highlighter.AbstractDslHighlighterTest
+import org.jetbrains.kotlin.idea.highlighter.AbstractHighlightImplicitItHandlerTest
 import org.jetbrains.kotlin.idea.highlighter.AbstractK1HighlightingMetaInfoTest
 import org.jetbrains.kotlin.idea.highlighter.AbstractK1HighlightingTest
 import org.jetbrains.kotlin.idea.highlighter.AbstractKotlinReceiverUsageHighlightingTest
@@ -1015,6 +1016,10 @@ private fun assembleWorkspace(): TWorkspace = workspace(KotlinPluginMode.K1) {
 
         testClass<AbstractMultiPlatformHighlightingTest> {
             model("multiModuleHighlighting/multiplatform/", isRecursive = false, pattern = DIRECTORY)
+        }
+
+        testClass<AbstractHighlightImplicitItHandlerTest>("org.jetbrains.kotlin.idea.highlighter.HighlightImplicitItHandlerTestGenerated") {
+            model("implicitIt")
         }
     }
 

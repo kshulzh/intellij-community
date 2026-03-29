@@ -7,12 +7,17 @@ import com.intellij.codeInsight.highlighting.HighlightUsagesHandlerFactoryBase
 import com.intellij.openapi.editor.Editor
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
-import com.intellij.psi.impl.source.tree.LeafPsiElement
+import com.intellij.psi.util.elementType
 import com.intellij.util.Consumer
 import org.jetbrains.kotlin.K1Deprecation
+import org.jetbrains.kotlin.builtins.StandardNames
 import org.jetbrains.kotlin.idea.codeinsight.utils.getFunctionLiteralByImplicitLambdaParameter
+import org.jetbrains.kotlin.idea.codeinsight.utils.getImplicitItLambdaParameterSymbol
+import org.jetbrains.kotlin.idea.codeinsight.utils.getLambdaFunctionLiteralByNameReference
+import org.jetbrains.kotlin.idea.references.getCalleeByLambdaArgument
 import org.jetbrains.kotlin.lexer.KtToken
 import org.jetbrains.kotlin.lexer.KtTokens
+import org.jetbrains.kotlin.psi.KtLambdaExpression
 import org.jetbrains.kotlin.psi.KtNameReferenceExpression
 import org.jetbrains.kotlin.psi.KtSimpleNameExpression
 import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
@@ -20,14 +25,15 @@ import org.jetbrains.kotlin.psi.KtTreeVisitorVoid
 @K1Deprecation
 class KotlinHighlightImplicitItHandlerFactory : HighlightUsagesHandlerFactoryBase() {
     override fun createHighlightUsagesHandler(editor: Editor, file: PsiFile, target: PsiElement): HighlightUsagesHandlerBase<*>? {
-        if (target !is LeafPsiElement
-            || target.elementType !is KtToken // do not trigger loading of KtTokens in Java
+        if (target.elementType !is KtToken // do not trigger loading of KtTokens in Java
             || target.elementType != KtTokens.IDENTIFIER) {
             return null
         }
 
         val refExpr = target.parent as? KtNameReferenceExpression ?: return null
-        val lambda = refExpr.getFunctionLiteralByImplicitLambdaParameter() ?: return null
+        val lambda = refExpr.getFunctionLiteralByImplicitLambdaParameter()
+            ?: refExpr.getLambdaFunctionLiteralByNameReference()?.takeIf { it.getImplicitItLambdaParameterSymbol() != null }
+            ?: return null
         return object : HighlightUsagesHandlerBase<KtNameReferenceExpression>(editor, file) {
             override fun getTargets() = listOf(refExpr)
 
@@ -37,15 +43,31 @@ class KotlinHighlightImplicitItHandlerFactory : HighlightUsagesHandlerFactoryBas
             ) = selectionConsumer.consume(targets)
 
             override fun computeUsages(targets: List<KtNameReferenceExpression>) {
+                var addLambdaOccurrence = false
                 lambda.accept(
                     object : KtTreeVisitorVoid() {
                         override fun visitSimpleNameExpression(expression: KtSimpleNameExpression) {
                             if (expression is KtNameReferenceExpression && expression.getFunctionLiteralByImplicitLambdaParameter() == lambda) {
                                 addOccurrence(expression)
+                                addLambdaOccurrence = true
+                            }
+                        }
+
+                        //implicit lambda parameter is not available inside another lambda with implicit parameter or name `it`
+                        override fun visitLambdaExpression(lambdaExpression: KtLambdaExpression) {
+                            if (lambdaExpression.functionLiteral.getImplicitItLambdaParameterSymbol() == null &&
+                                lambdaExpression.functionLiteral.valueParameters.find { it.name == StandardNames.IMPLICIT_LAMBDA_PARAMETER_NAME.asString() } == null
+                            ) {
+                                super.visitLambdaExpression(lambdaExpression)
                             }
                         }
                     }
                 )
+                if (addLambdaOccurrence) {
+                    lambda.getCalleeByLambdaArgument()?.also {
+                        addOccurrence(it)
+                    }
+                }
             }
         }
     }
